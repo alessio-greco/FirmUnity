@@ -1,214 +1,251 @@
 using UnityEngine; // To be able to use waituntilframe and such
 using System.IO.Ports; // Serial port communication
-using System.Collections.Generic; // to use "Dictionary" class
+using System.Collections.Generic; // to use "Dictionary" and "List" classes
+using System.Collections;
 using System.Threading; // sleep and "reading thread"
 
-namespace FirmUnity{
-	public class FirmataBridge {
-
-		//Variables 
-
-		private Dictionary<int,PinInfo> pins = new Dictionary<int,PinInfo> (); // pins infos. Digital pin are from 0 to ..., pin Analog n  corresponds to -(n+1)
-		// so Analog 0 -> Pin -1, Analog 2 -> pin -2 and such
-		private bool reportAll; // if true, report channels based on 
-		private SerialPort serialPort;
-		private bool isOpen;
-		private Thread readingThread = new Thread (ReadInputs ());
-		private Thread delayedOpenThread;
-		private Board board; // Use "ArduinoBoards.Name" for Arduino boards, or create a new board specifying it's IO/PWM
-
-		//Constructors
-
-		public FirmataBridge (string portName, Board board, int baudRate, bool autoStart, int delay, bool reportAll, int readTimeout){
-			int totalDigitalPins = board.totalDigitalIO + board.totalAnalogIn;
-			int totalDigitalPorts = (totalDigitalPins - totalDigitalPins % 8) / 8 + 1;
-			for (int i = 0; i < totalDigitalPins; i++) {
-				if (board.PWMEnabled.Contains(i))
-					pins.Add (i, new PinInfo (PinType.PWM));
-				else
-					pins.Add (i, new PinInfo (PinType.DIGITAL));
-			}
-			for (int i = 0; i < board.totalAnalogIn+board.totalAnalogOut; i++) {
-				if (i < board.totalAnalogIn)
-					pins.Add (-(i + 1), new PinInfo (PinType.ANALOG));
-				else pins.Add(-(i + 1), new PinInfo (PinType.DAC));
-			}
-			serialPort = new SerialPort (portName, baudRate);
-			serialPort.ReadTimeout=readTimeout;
-			isOpen = false;
-			if (autoStart)
-				Open (delay);
+public class FirmataBridge {
+	//Variables 
+	private Dictionary<int,PinInfo> pins = new Dictionary<int,PinInfo> (); // pins infos. Digital pin are from 0 to ..., pin Analog n  corresponds to -(n+1)
+	// so Analog 0 -> Pin -1, Analog 2 -> pin -2 and such
+	private bool reportAll; // if true, report channels based on 
+	private SerialPort serialPort;
+	private bool isOpen;
+	private Thread readingThread = new Thread (new ThreadStart(ReadThread));
+	private Board board; // Use "ArduinoBoards.Name" for Arduino boards, or create a new board specifying it's IO/PWM
+	private int delay=0;
+	private int fixedTime;
+	private List<int> keysDown = new List<int> ();
+	private List<int> keysUp = new List<int> ();
+	//Constructors
+	public static FirmataBridge instance;
+	public FirmataBridge (string portName, Board board, int baudRate, bool autoStart, int delay, bool reportAll, int readTimeout){
+		fixedTime = (int)(Mathf.Ceil (Time.fixedDeltaTime));
+		Debug.Log ("entrato nel costruttore, fixedTIme è "+fixedTime);
+		int totalDigitalPins = board.totalDigitalIO + board.totalAnalogIn;
+		int totalDigitalPorts = (totalDigitalPins - totalDigitalPins % 8) / 8 + 1;
+		for (int i = 0; i < totalDigitalPins; i++) {
+			if (board.PWMEnabled.Contains(i))
+				pins.Add (i, new PinInfo (PinType.PWM));
+			else
+				pins.Add (i, new PinInfo (PinType.DIGITAL));
 		}
-		public FirmataBridge (string portName, Board board, int baudRate, int readTimeout):this(portName, ArduinoBoards.Uno, baudRate, false, 0, true, readTimeout){
+		for (int i = 0; i < board.totalAnalogIn+board.totalAnalogOut; i++) {
+			if (i < board.totalAnalogIn)
+				pins.Add (-(i + 1), new PinInfo (PinType.ANALOG));
+			else pins.Add(-(i + 1), new PinInfo (PinType.DAC));
 		}
-		public FirmataBridge (string portName, int baudRate, bool autoStart, int delay, bool reportAll, int readTimeout):this(portName, ArduinoBoards.Uno, baudRate, autoStart, delay, true, 10){
-		}
-		public FirmataBridge (string portName, int baudRate, bool reportAll, int readTimeout):this(portName, ArduinoBoards.Uno, baudRate, false, 0, reportAll, readTimeout){
-		}
-		public FirmataBridge (string portName, int baudRate, bool autoStart, int delay, int ReadTimeout):this(portName, ArduinoBoards.Uno, baudRate, autoStart, delay, true, ReadTimeout){
-		}
-		public FirmataBridge (string portName, int baudRate, bool autoStart):this(portName, ArduinoBoards.Uno, baudRate, autoStart, 500, true, 10){
-		}
-		public FirmataBridge (string portName, int baudRate, int readTimeout):this(portName, ArduinoBoards.Uno, baudRate, false, 0, true, readTimeout){
-		}
-		public FirmataBridge (string portName, bool autoStart, int delay):this(portName, ArduinoBoards.Uno, 57600, autoStart, delay, true, 10){
-		}
-		public FirmataBridge (string portName, bool autoStart):this(portName, ArduinoBoards.Uno, 57600, autoStart, 500, true, 10){
-		}
-		public FirmataBridge (string portName, int baudRate):this(portName, ArduinoBoards.Uno, baudRate, false, 0, true, 10){
-		}
-		public FirmataBridge (string portName):this(portName, ArduinoBoards.Uno, 57600, false, 0, true, 10){
-		}
-		public FirmataBridge (string portName, Board board, int baudRate, bool reportAll, int readTimeout):this(portName, board, baudRate, false, 0, reportAll, readTimeout){
-		}
-		public FirmataBridge (string portName, Board board, int baudRate, bool autoStart, int delay, int readTimeout):this(portName, board, baudRate, autoStart, delay, true, readTimeout){
-		}
-		public FirmataBridge (string portName, Board board, int baudRate, bool autoStart):this(portName, board, baudRate, autoStart, 500, true, 10){
-		}
-		public FirmataBridge (string portName, Board board, int baudRate, int readTimeout):this(portName, board, baudRate, false, 0, true, readTimeout){
-		}
-		public FirmataBridge (string portName, Board board, bool autoStart, int delay):this(portName, board, 57600, autoStart, delay, true, 10){
-		}
-		public FirmataBridge (string portName, Board board, bool autoStart):this(portName, board, 57600, autoStart, 500, true, 10){
-		}
-		public FirmataBridge (string portName, Board board, int baudRate):this(portName, board, baudRate, false, 0, true, 10){
-		}
-		public FirmataBridge (string portName, Board board):this(portName, board, 57600, false, 0, true, 10){
-		}
-			
-		// Utility Methods
-
-		public bool IsOpen (){
-			return isOpen;
-		}
-
-		// Open Methods
-
-		public void Open(int delay){
-			delayedOpenThread = DelayedOpen (delay);
-			delayedOpenThread.Start ();
-		}
-		public void Open (){
-			if (!isOpen) {
-				try {
-					serialPort.Open ();
-				}catch{
-					Debug.Log ("errors while opening the serial port!");
-				}
-				readingThread.Start ();
-				isOpen = true;
-			}
-		}
-		public void DelayedOpen(int delay){
-			Thread.Sleep (delay);
+		this.board = board;
+		this.reportAll = reportAll;
+		serialPort = new SerialPort (portName, baudRate);
+		serialPort.ReadTimeout=readTimeout;
+		isOpen = false;
+		if (instance == null)
+			instance = this;
+		if (autoStart)
 			Open ();
-		}
-		// Reading Thread
-
-		private void ReadBridge (){
-			string protocol_Version="";
-			int totalDigitalPins = board.totalDigitalIO + board.totalAnalogIn;
-			int totalDigitalPorts = (totalDigitalPins - totalDigitalPins % 8) / 8 + 1;
-			byte[] message = new byte[128]; // most instructions use only the first 3 
-			int readed=0;
-			//  if reportAll = true, enable report for all pins by default, else, pin are to be enabled when "pinMode" is used on them
-			message [1] = 1;
-			if (reportAll) {
-				for (int i = 0; i < totalDigitalPorts; i++) {
-					message [0] = (byte)Message.REPORT_DIGITAL_PORT | i;
-					serialPort.Write (message, 0, 2);
-				}
-				for (int i = 0; i < board.totalAnalogIn+board.totalAnalogOut; i++) {
-					message [0] = (byte)Message.REPORT_ANALOG_PIN | i;
-					serialPort.Write (message, 0, 2);
-				}
-			}
-			do{
-				if((serialPort.BytesToRead!=-1)&&(serialPort.IsOpen())){
-					readed=serialPort.ReadByte;
-					if((readed&Message.ANALOG_MESSAGE==Message.ANALOG_MESSAGE)){
-						// 0xE1 & 0xE0 -> 0xE0
-						int pin = readed - Message.ANALOG_MESSAGE;
-						int value = serialPort.ReadByte();
-						value+=serialPort.ReadByte()*Mathf.Pow(2,7);
-						ChangePinState(pin,value);
-					}
-					if((readed&Message.DIGITAL_MESSAGE==Message.DIGITAL_MESSAGE)){
-						// 0x91 & 0x90 -> 0xE0
-						int port = readed - Message.DIGITAL_MESSAGE;
-						int max = Mathf.Min(port*8-1, totalDigitalPins);
-						readed=serialPort.ReadByte();
-						for (int i=port*8 ; i<max; i++){
-							int value = readed&PinHelper.getPinMask(i%8);
-							if(value!=0) value=1;
-							ChangePinState(i,value);
-						}
-						readed=serialPort.ReadByte();
-						if((port+1)*8< totalDigitalPins){
-							int value = readed&PinHelper.getPinMask(7);
-							if(value!=0) value=1;
-							ChangePinState(port*8+8, value);
-
-						}
-
-					}
-					if(readed==Message.START_SYSEX){
-						// SYSEX Management on hold
-						while(serialPort.BytesToRead=!Message.SYSEX_END) serialPort.ReadByte();
-					}
-					if(readed==Message.PROTOCOL_VERSION){
-						protocol_Version="";
-						protocol_Version+=serialPort.ReadByte()+"."+serialPort.ReadByte();
-						Debug.Log("Protocol Version "+protocol_Version);
-					}
-					// SET_DIGITAL_PIN_MODE, SET_DIGITAL_PIN_VALUE, REPORT_ANALOG_PIN, REPORT_DIGITAL_PORT are only sent to and never received from the board, SYSEX_END is only at the end of SYSEXs
-				}
-
-				WaitForEndOfFrame();
-			}
-			while(true);
+		Debug.Log ("finito il costruttore");
+	}
+	public FirmataBridge (string portName, int baudRate, bool autoStart, int delay, bool reportAll, int readTimeout):this(portName, ArduinoBoards.Uno, baudRate, autoStart, delay, true, 1){
+	}
+	public FirmataBridge (string portName, int baudRate, bool reportAll, int readTimeout):this(portName, ArduinoBoards.Uno, baudRate, false, 0, reportAll, readTimeout){
+	}
+	public FirmataBridge (string portName, int baudRate, bool autoStart, int delay, int readTimeout):this(portName, ArduinoBoards.Uno, baudRate, autoStart, delay, true, readTimeout){
+	}
+	public FirmataBridge (string portName, int baudRate, bool autoStart):this(portName, ArduinoBoards.Uno, baudRate, autoStart, 500, true, 1){
+	}
+	public FirmataBridge (string portName, int baudRate, int readTimeout):this(portName, ArduinoBoards.Uno, baudRate, false, 0, true, readTimeout){
+	}
+	public FirmataBridge (string portName, bool autoStart, int delay):this(portName, ArduinoBoards.Uno, 57600, autoStart, delay, true, 1){
+	}
+	public FirmataBridge (string portName, bool autoStart):this(portName, ArduinoBoards.Uno, 57600, autoStart, 500, true, 1){
+	}
+	public FirmataBridge (string portName, int baudRate):this(portName, ArduinoBoards.Uno, baudRate, false, 0, true, 1){
+	}
+	public FirmataBridge (string portName):this(portName, ArduinoBoards.Uno, 57600, false, 0, true, 1){
+	}
+	public FirmataBridge (string portName, Board board, int baudRate, bool reportAll, int readTimeout):this(portName, board, baudRate, false, 0, reportAll, readTimeout){
+	}
+	public FirmataBridge (string portName, Board board, int baudRate, bool autoStart, int delay, int readTimeout):this(portName, board, baudRate, autoStart, delay, true, readTimeout){
+	}
+	public FirmataBridge (string portName, Board board, int baudRate, bool autoStart):this(portName, board, baudRate, autoStart, 500, true, 1){
+	}
+	public FirmataBridge (string portName, Board board, int baudRate, int readTimeout):this(portName, board, baudRate, false, 0, true, readTimeout){
+	}
+	public FirmataBridge (string portName, Board board, bool autoStart, int delay):this(portName, board, 57600, autoStart, delay, true, 1){
+	}
+	public FirmataBridge (string portName, Board board, bool autoStart):this(portName, board, 57600, autoStart, 500, true, 1){
+	}
+	public FirmataBridge (string portName, Board board, int baudRate):this(portName, board, baudRate, false, 0, true, 1){
+	}
+	public FirmataBridge (string portName, Board board):this(portName, board, 57600, false, 0, true, 1){
+	}
 			
-		}
+	// Utility Methods
 
-		private void ChangePinState(int pin, int value){
-			if(pins[pin].value==0){
-				pins[pin].value=value;
-				if (value == 1)
-					pins [pin].keyDown = true;
-				else
-					pins [pin].keyUp = false;
-			}
-			else{
-				pins[i].value=value;
-				if (value == 0)
-					pins [pin].keyUp = true;
-				else
-					pins [pin].keyDown = false;
-			}
-		}
+	public bool IsOpen (){
+		return isOpen;
+	}
 
-		// Digital I/O
-		public void pinMode(int pin, PinMode mode){
-			byte message = new byte[3];
-			pins [pin].pinMode = mode;
-			message [0] = (byte)Message.SET_DIGITAL_PIN_MODE;
-			message [1] = (byte)pin;
-			message [2] = (byte)mode; 
-			serialPort.Write (message, 0, 3);
-		}
-		public void digitalWrite(int pin, Value state){
-			byte message = new byte[3];
-			pins [pin].value = state;
-			message [0] = (byte)Message.SET_DIGITAL_PIN_VALUE;
-			message [1] = (byte)pin;
-			message [2] = (byte)state; 
-			serialPort.Write (message, 0, 3);
-		}
-		public int digitalRead(int pin){
-			return pins [pin].value;
+	// Open Methods
+	public void Open (){
+		Debug.Log ("apertura iniziata");
+		Wait (delay);
+		if (!isOpen) {
+			try {
+				serialPort.Open ();
+			}catch{
+				Debug.Log ("errors while opening the serial port!");
+			}
+			readingThread.Start ();
+			isOpen = true;
+			Debug.Log ("apertura finita");
 		}
 	}
+	// Reading Thread
+	private IEnumerator Wait(int milliseconds){
+		yield return new WaitForSeconds (milliseconds / 1000);
+	}
+
+	private static void ReadThread (){
+		string protocol_Version="";
+		int totalDigitalPins = instance.board.totalDigitalIO + instance.board.totalAnalogIn;
+		int totalDigitalPorts = (totalDigitalPins - totalDigitalPins % 8) / 8 + 1;
+		byte[] message = new byte[128]; // most instructions use only the first 3 
+		int readed=0;
+		//  if reportAll = true, enable report for all pins by default, else, pin are to be enabled when "pinMode" is used on them
+		message [1] = 1;
+		if (instance.reportAll) {
+			for (int i = 0; i < totalDigitalPorts; i++) {
+				message [0] = (byte)((int)Message.REPORT_DIGITAL_PORT | i);
+				instance.serialPort.Write (message, 0, 2);
+			}
+			for (int i = 0; i < instance.board.totalAnalogIn+instance.board.totalAnalogOut; i++) {
+				message [0] = (byte)((int)Message.REPORT_ANALOG_PIN | i);
+				instance.serialPort.Write (message, 0, 2);
+			}
+		}
+		do{
+			if(instance.isOpen){
+				if(instance.keysDown.Count>0){
+					foreach(int pin in instance.keysDown) instance.pins[pin].keyDown=false;
+					instance.keysDown.Clear();
+				}
+				if(instance.keysUp.Count>0){
+					foreach(int pin in instance.keysUp) instance.pins[pin].keyUp=false;
+					instance.keysUp.Clear();
+				}
+				readed=instance.ReadByte();;
+				if(((readed&(int)Message.ANALOG_MESSAGE)==(int)Message.ANALOG_MESSAGE)){
+					// 0xE1 & 0xE0 -> 0xE0
+					int pin = readed - (int)Message.ANALOG_MESSAGE;
+					int value = instance.ReadByte();
+					value+=instance.ReadByte()*(int)Mathf.Pow(2,7);
+					instance.ChangePinState(pin,value);
+				}
+				if(((readed&(int)Message.DIGITAL_MESSAGE)==(int)Message.DIGITAL_MESSAGE)){
+					
+					// 0x91 & 0x90 -> 0xE0
+					int port = readed - (int)Message.DIGITAL_MESSAGE;
+					int max = Mathf.Min((port+1)*8-1, totalDigitalPins);
+					readed=instance.ReadByte();
+					Debug.Log("for port "+port+" byte is "+readed);
+					for (int i=port*8 ; i<max; i++){
+						int value = readed&PinHelper.getPinMask(i%8);
+						if(value!=0) value=1;
+						instance.ChangePinState(i,value);
+					}
+					readed=instance.ReadByte();
+					if((port+1)*8< totalDigitalPins){
+						int value = readed&PinHelper.getPinMask(7);
+						if(value!=0) value=1;
+						instance.ChangePinState(port*8+8, value);
+					}
+				}
+				if(readed==(int)Message.START_SYSEX){
+					// SYSEX Management on hold
+					while(instance.serialPort.BytesToRead!=(int)Message.SYSEX_END) instance.ReadByte();
+				}
+				if(readed==(int)Message.PROTOCOL_VERSION){
+					protocol_Version="";
+					protocol_Version+=instance.ReadByte()+"."+instance.ReadByte();
+					Debug.Log("Protocol Version "+protocol_Version);
+				}
+				// SET_DIGITAL_PIN_MODE, SET_DIGITAL_PIN_VALUE, REPORT_ANALOG_PIN, REPORT_DIGITAL_PORT are only sent to and never received from the board, SYSEX_END is only at the end of SYSEXs
+			}
+			Thread.Sleep(10);
+		}
+		while(true);
+	}
+
+	private int ReadByte(){
+		int readed=0;
+		try{
+			readed=instance.serialPort.ReadByte();
+		}catch{
+		}
+
+		return readed;
+	}
+
+	private static IEnumerator WaitNextFrame(){
+		yield return new WaitForEndOfFrame ();
+	}
+
+	private void ChangePinState(int pin, int value){
+		if(pins[pin].value==0){
+			pins[pin].value=value;
+			if (value == 1) {
+				keysDown.Add (pin);
+				pins [pin].keyDown = true;
+			}
+			else{
+				pins[pin].value=value;
+			if (value == 0) {
+				keysUp.Add (pin);
+				pins [pin].keyUp = true;
+			}
+			else
+				pins [pin].keyDown = false;
+			}
+		}
+	}
+
+		// Digital I/O
+	public void pinMode(int pin, PinMode mode){
+		byte[] message = new byte[3];
+		pins [pin].pinMode = mode;
+		message [0] = (byte)Message.SET_DIGITAL_PIN_MODE;
+		message [1] = (byte)pin;
+		message [2] = (byte)mode; 
+		serialPort.Write (message, 0, 3);
+	}
+	public void digitalWrite(int pin, Value state){
+		byte[] message = new byte[3];
+		pins [pin].value = (int)state;
+		message [0] = (byte)Message.SET_DIGITAL_PIN_VALUE;
+		message [1] = (byte)pin;
+		message [2] = (byte)state; 
+		serialPort.Write (message, 0, 3);
+	}
+	public int digitalRead(int pin){
+		return pins [pin].value;
+	}
+
+		// UnityAddictional Input
+	public bool getKeyUp(int pin){
+		return pins [pin].keyUp;
+	}
+	public bool getKeyDown(int pin){
 		
+		return pins [pin].keyDown;
+	}
+	public bool getKey(int pin){
+		if (pins [pin].value == 1)
+			return true;
+		else return false;
+	}
+}		
 	public class PinInfo{
 		PinType pinType;
 		public PinMode pinMode;
@@ -231,9 +268,9 @@ namespace FirmUnity{
 			this.totalDigitalPWM = totalDigitalPWM; // first n digital IO that can provide PWM output
 			this.totalAnalogIn = totalAnalogIn; // read analog input, can be used as digital IO
 			this.totalAnalogOut = totalAnalogOut; // provide analog DAC output. Currently unsupported via firmata
-			foreach(int i in PWMEnabled) this.PWMEnabled.Add(i);
+			if(PWMEnabled[0]!=-1) foreach(int i in PWMEnabled) this.PWMEnabled.Add(i);
 		}
-		public Board(int totalDigitalIO, int totalDigitalPWM, int totalAnalogIn, int totalAnalogOut):this(totalDigitalIO,totalDigitalPWM,totalAnalogIn,totalAnalogOut, null){
+		public Board(int totalDigitalIO, int totalDigitalPWM, int totalAnalogIn, int totalAnalogOut):this(totalDigitalIO,totalDigitalPWM,totalAnalogIn,totalAnalogOut, new int[]{-1}){
 		}
 	}
 	public enum PinMode{
@@ -339,7 +376,6 @@ namespace FirmUnity{
 		public static Board Leonardo = new Board(20,7,12,0);
 		public static Board Mega_ADK = new Board(54,15,16,0);
 		public static Board Nano = new Board(14,6,8,0);
-		public static Board Mini = new Board(14,6,8,0);
-		public static Board Yùn = new Board(20,7,12,0);
-	} 
+	public static Board Mini = new Board(14,6,8,0);
+	public static Board Yùn = new Board(20,7,12,0);
 }
