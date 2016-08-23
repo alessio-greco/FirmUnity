@@ -1,10 +1,10 @@
-﻿using UnityEngine; // To be able to use waituntilframe and such
+using UnityEngine; // To be able to use waituntilframe and such
 using System.IO.Ports; // Serial port communication
 using System.Collections.Generic; // to use "Dictionary" class
 using System.Threading; // sleep and "reading thread"
 
-namespace FirmUnity{ 
-	public class FirmataBridge {
+namespace FirmUnity{
+	public class FirmataBridge : MonoBehaviour {
 
 		//Variables 
 
@@ -14,7 +14,8 @@ namespace FirmUnity{
 		private SerialPort serialPort;
 		private bool isOpen;
 		private Thread readingThread = new Thread (ReadInputs ());
-		private Board board = ArduinoBoards.Uno; // Use "ArduinoBoards.Name" for Arduino boards, or create a new board specifying it's IO/PWM
+		private Thread delayedOpenThread;
+		private Board board; // Use "ArduinoBoards.Name" for Arduino boards, or create a new board specifying it's IO/PWM
 
 		//Constructors
 
@@ -84,10 +85,8 @@ namespace FirmUnity{
 		// Open Methods
 
 		public void Open(int delay){
-			if (!isOpen) {
-				Thread.Sleep (delay);
-				Open();
-			}
+			delayedOpenThread = DelayedOpen (delay);
+			delayedOpenThread.Start ();
 		}
 		public void Open (){
 			if (!isOpen) {
@@ -100,10 +99,60 @@ namespace FirmUnity{
 				isOpen = true;
 			}
 		}
-
+		public void DelayedOpen(int delay){
+			Thread.Sleep (delay);
+			Open ();
+		}
 		// Reading Thread
 
 		private void ReadBridge (){
+			string protocol_Version="";
+			int totalDigitalPins = board.totalDigitalIO + board.totalAnalogIn;
+			int totalDigitalPorts = (totalDigitalPins - totalDigitalPins % 8) / 8 + 1;
+			byte[] message = new byte[128]; // most instructions use only the first 3 
+			int readed=0;
+			//  if reportAll = true, enable report for all pins by default, else, pin are to be enabled when "pinMode" is used on them
+			message [1] = 1;
+			if (reportAll) {
+				for (int i = 0; i < totalDigitalPorts; i++) {
+					message [0] = (byte)Message.REPORT_DIGITAL_PORT | i;
+					serialPort.Write (command, 0, 2);
+				}
+				for (int i = 0; i < board.totalAnalogIn+board.totalAnalogOut; i++) {
+					message [0] = (byte)Message.REPORT_ANALOG_PIN | i;
+					serialPort.Write (command, 0, 2);
+				}
+			}
+			do{
+				if((serialPort.BytesToRead!=-1)&&(serialPort.IsOpen())){
+					readed=serialPort.ReadByte;
+					if((readed&Message.ANALOG_MESSAGE==Message.ANALOG_MESSAGE)){
+						// 0xE1 & 0xE0 -> 0xE0
+
+					}
+					if((readed&Message.DIGITAL_MESSAGE==Message.DIGITAL_MESSAGE)){
+						// 0x91 & 0x90 -> 0xE0
+						int port = readed - Message.DIGITAL_MESSAGE;
+						int max = Math.Max(
+						for (int i=port*8 ;
+
+					}
+					if(readed==Message.START_SYSEX){
+						// SYSEX Management on hold
+						while(serialPort.BytesToRead=!Message.SYSEX_END) serialPort.ReadByte();
+					}
+					if(readed==Message.PROTOCOL_VERSION){
+						protocol_Version="";
+						protocol_Version+=serialPort.ReadByte()+"."+serialPort.ReadByte();
+						Debug.Log("Protocol Version "+protocol_Version);
+					}
+					Debug.Log(readed);
+					// SET_DIGITAL_PIN_MODE, SET_DIGITAL_PIN_VALUE, REPORT_ANALOG_PIN, REPORT_DIGITAL_PORT are only sent to and never received from the board, SYSEX_END is only at the end of SYSEXs
+				}
+
+				Thread.Yield()
+			}
+			while(true);
 			
 		}
 		private void SendI (){
@@ -113,7 +162,7 @@ namespace FirmUnity{
 
 	public class PinInfo{
 		PinType pinType;
-		PinMode pinMode;
+		PinMode pinMode=PinMode.OFF;
 		int value; // represent current value of the pin
 		bool keyUp; // is true during the frame next to the release
 		bool keyDown; // is true during the frame where it is pressed
@@ -177,24 +226,6 @@ namespace FirmUnity{
 		PIN_4 = 0x10,
 		PIN_5 = 0x20,
 		PIN_6 = 0x40,
-	}
-	public enum Port{
-		PIN_0_TO_7 = 0x00,
-		PIN_8_TO_15 = 0x01,
-		PIN_16_TO_23 = 0x02,
-		PIN_24_TO_31 = 0x03,
-		PIN_32_TO_39 = 0x04,
-		PIN_40_TO_47 = 0x05,
-		PIN_48_TO_55 = 0x06,
-		PIN_56_TO_63 = 0x07,
-		PIN_64_TO_71 = 0x08,
-		PIN_72_TO_79 = 0x09,
-		PIN_80_TO_71 = 0x0A,
-		PIN_88_TO_79 = 0x0B,
-		PIN_96_TO_103 = 0x0C,
-		PIN_104_TO_111 = 0x0D,
-		PIN_112_TO_119 = 0x0E,
-		PIN_120_TO_127 = 0x0F,
 	}
 
 	// Sysex Queries are to be implemented later
