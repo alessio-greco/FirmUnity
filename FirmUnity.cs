@@ -4,7 +4,7 @@ using System.Collections.Generic; // to use "Dictionary" class
 using System.Threading; // sleep and "reading thread"
 
 namespace FirmUnity{
-	public class FirmataBridge : MonoBehaviour {
+	public class FirmataBridge {
 
 		//Variables 
 
@@ -23,7 +23,7 @@ namespace FirmUnity{
 			int totalDigitalPins = board.totalDigitalIO + board.totalAnalogIn;
 			int totalDigitalPorts = (totalDigitalPins - totalDigitalPins % 8) / 8 + 1;
 			for (int i = 0; i < totalDigitalPins; i++) {
-				if (i < board.totalDigitalPWM)
+				if (board.PWMEnabled.Contains(i))
 					pins.Add (i, new PinInfo (PinType.PWM));
 				else
 					pins.Add (i, new PinInfo (PinType.DIGITAL));
@@ -116,11 +116,11 @@ namespace FirmUnity{
 			if (reportAll) {
 				for (int i = 0; i < totalDigitalPorts; i++) {
 					message [0] = (byte)Message.REPORT_DIGITAL_PORT | i;
-					serialPort.Write (command, 0, 2);
+					serialPort.Write (message, 0, 2);
 				}
 				for (int i = 0; i < board.totalAnalogIn+board.totalAnalogOut; i++) {
 					message [0] = (byte)Message.REPORT_ANALOG_PIN | i;
-					serialPort.Write (command, 0, 2);
+					serialPort.Write (message, 0, 2);
 				}
 			}
 			do{
@@ -128,13 +128,28 @@ namespace FirmUnity{
 					readed=serialPort.ReadByte;
 					if((readed&Message.ANALOG_MESSAGE==Message.ANALOG_MESSAGE)){
 						// 0xE1 & 0xE0 -> 0xE0
-
+						int pin = readed - Message.ANALOG_MESSAGE;
+						int value = serialPort.ReadByte();
+						value+=serialPort.ReadByte()*Mathf.Pow(2,7);
+						ChangePinState(pin,value);
 					}
 					if((readed&Message.DIGITAL_MESSAGE==Message.DIGITAL_MESSAGE)){
 						// 0x91 & 0x90 -> 0xE0
 						int port = readed - Message.DIGITAL_MESSAGE;
-						int max = Math.Max(
-						for (int i=port*8 ;
+						int max = Mathf.Min(port*8-1, totalDigitalPins);
+						readed=serialPort.ReadByte();
+						for (int i=port*8 ; i<max; i++){
+							int value = readed&PinHelper.getPinMask(i%8);
+							if(value!=0) value=1;
+							ChangePinState(i,value);
+						}
+						readed=serialPort.ReadByte();
+						if((port+1)*8< totalDigitalPins){
+							int value = readed&PinHelper.getPinMask(7);
+							if(value!=0) value=1;
+							ChangePinState(port*8+8, value);
+
+						}
 
 					}
 					if(readed==Message.START_SYSEX){
@@ -146,29 +161,63 @@ namespace FirmUnity{
 						protocol_Version+=serialPort.ReadByte()+"."+serialPort.ReadByte();
 						Debug.Log("Protocol Version "+protocol_Version);
 					}
-					Debug.Log(readed);
 					// SET_DIGITAL_PIN_MODE, SET_DIGITAL_PIN_VALUE, REPORT_ANALOG_PIN, REPORT_DIGITAL_PORT are only sent to and never received from the board, SYSEX_END is only at the end of SYSEXs
 				}
 
-				Thread.Yield()
+				WaitForEndOfFrame();
 			}
 			while(true);
 			
 		}
-		private void SendI (){
 
+		private void ChangePinState(int pin, int value){
+			if(pins[pin].value==0){
+				pins[pin].value=value;
+				if (value == 1)
+					pins [pin].keyDown = true;
+				else
+					pins [pin].keyUp = false;
+			}
+			else{
+				pins[i].value=value;
+				if (value == 0)
+					pins [pin].keyUp = true;
+				else
+					pins [pin].keyDown = false;
+			}
+		}
+
+		// Digital I/O
+		public void pinMode(int pin, PinMode mode){
+			byte message = new byte[3];
+			pins [pin].pinMode = mode;
+			message [0] = (byte)Message.SET_DIGITAL_PIN_MODE;
+			message [1] = (byte)pin;
+			message [2] = (byte)mode; 
+			serialPort.Write (message, 0, 3);
+		}
+		public void digitalWrite(int pin, Value state){
+			byte message = new byte[3];
+			pins [pin].value = state;
+			message [0] = (byte)Message.SET_DIGITAL_PIN_VALUE;
+			message [1] = (byte)pin;
+			message [2] = (byte)state; 
+			serialPort.Write (message, 0, 3);
+		}
+		public int digitalRead(int pin){
+			return pins [pin].value;
 		}
 	}
-
+		
 	public class PinInfo{
 		PinType pinType;
-		PinMode pinMode=PinMode.OFF;
-		int value; // represent current value of the pin
-		bool keyUp; // is true during the frame next to the release
-		bool keyDown; // is true during the frame where it is pressed
+		public PinMode pinMode;
+		public int value; // represent current value of the pin
+		public bool keyUp; // is true during the frame next to the release
+		public bool keyDown; // is true during the frame where it is pressed
 		public PinInfo(PinType type){
 			pinType = type;
-			pinMode = PinMode.OFF;
+			pinMode = PinMode.INPUT;
 		}
 	}
 	public class Board{
@@ -176,17 +225,20 @@ namespace FirmUnity{
 		public int totalDigitalPWM;
 		public int totalAnalogIn;
 		public int totalAnalogOut;
-		public Board(int totalDigitalIO, int totalDigitalPWM, int totalAnalogIn, int totalAnalogOut){
+		public List<int> PWMEnabled=new List<int>();
+		public Board(int totalDigitalIO, int totalDigitalPWM, int totalAnalogIn, int totalAnalogOut, int[] PWMEnabled){
 			this.totalDigitalIO = totalDigitalIO; // total digital IO that can provide digital input/output
 			this.totalDigitalPWM = totalDigitalPWM; // first n digital IO that can provide PWM output
 			this.totalAnalogIn = totalAnalogIn; // read analog input, can be used as digital IO
 			this.totalAnalogOut = totalAnalogOut; // provide analog DAC output. Currently unsupported via firmata
+			foreach(int i in PWMEnabled) this.PWMEnabled.Add(i);
+		}
+		public Board(int totalDigitalIO, int totalDigitalPWM, int totalAnalogIn, int totalAnalogOut):this(totalDigitalIO,totalDigitalPWM,totalAnalogIn,totalAnalogOut, null){
 		}
 	}
 	public enum PinMode{
-		OFF = -1,
-		INPUT = 0,  // Normal digital input behaviour
-		OUTPUT = 1, // Normal digital output behaviour
+		INPUT = 0,  // Normal digital/analog input behaviour
+		OUTPUT = 1, // Normal digital/analog output behaviour
 		ANALOG = 2,
 		PWM = 3,
 		SERVO = 4,
@@ -195,12 +247,12 @@ namespace FirmUnity{
 		STEPPER = 8,
 		ENCODER = 9,
 		SERIAL = 10,
-		PULLUP = 11 // Inverted Input Behaviour
+		INPUT_PULLUP = 11 // Inverted Input Behaviour
 	}
 	public enum PinType{
 		DIGITAL = 0, // Digital IO
-		PWM = 1, // Digital PWM + Digital IO
-		ANALOG = 2, // Analog In + Digital IO
+		PWM = 1, // Digital PWM + Digital IO. PWM Pins can send PWM
+		ANALOG = 2, // Analog In + Digital PWM + Digital IO
 		DAC = 3 // Anolog Out(DAC) + Digital IO
 	}
 	public enum Value{
@@ -218,14 +270,26 @@ namespace FirmUnity{
 		SYSEX_END=0xF7,
 		PROTOCOL_VERSION=0xF9
 	}
-	public enum Pin{
-		PIN_0 = 0x01,
-		PIN_1 = 0x02,
-		PIN_2 = 0x04,
-		PIN_3 = 0x08,
-		PIN_4 = 0x10,
-		PIN_5 = 0x20,
-		PIN_6 = 0x40,
+	public static class PinHelper{
+		public static int getPinMask(int pin){
+			if (pin == 0)
+				return 0x01;
+			if (pin == 1)
+				return 0x02;
+			if (pin == 2)
+				return 0x04;
+			if (pin == 3)
+				return 0x08;
+			if (pin == 4)
+				return 0x10;
+			if (pin == 5)
+				return 0x20;
+			if (pin == 6)
+				return 0x40;
+			if (pin == 7)
+				return 0x01; // pin 7 is on the second byte!
+			return -1;
+		} 
 	}
 
 	// Sysex Queries are to be implemented later
@@ -266,7 +330,7 @@ namespace FirmUnity{
 		public static Board MKR1000 = new Board(8,4,7,1);
 		public static Board Pro= new Board(14,6,6,0);
 		public static Board ProMini= new Board(14,6,6,0);
-		public static Board Uno = new Board(14,6,6,0);
+		public static Board Uno = new Board(14,6,6,0, new int[] {3,5,6,9,10,11,14,15,16,17,18,19});
 		public static Board Zero = new Board(14,10,6,1);
 		public static Board Due = new Board(54,12,12,1);
 		public static Board BT = new Board(14,6,6,0);
