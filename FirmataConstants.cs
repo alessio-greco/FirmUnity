@@ -34,7 +34,7 @@ public enum SysexQuery{
 	I2C_REPLY = 0x77, // I2C reply messages from an I/O board to a host
 	I2C_CONFIG = 0x78, // Enable I2C and provide any configuration settings
 	REPORT_FIRMWARE = 0x79, // report name and version of the firmware
-	SAMPLEING_INTERVAL = 0x7A, // the interval at which analog input is sampled (default = 19ms)
+	SAMPLING_INTERVAL = 0x7A, // the interval at which analog input is sampled (default = 19ms)
 	SCHEDULER_DATA = 0x7B, // send a createtask/deletetask/addtotask/schedule/querytasks/querytask request to the scheduler
 	SYSEX_NON_REALTIME = 0x7E, // MIDI Reserved for non-realtime messages
 	SYSEX_REALTIME = 0x7F // MIDI Reserved for realtime messages
@@ -98,7 +98,7 @@ public class PortSelection{
 public enum PinType{
 	DIGITAL = 0, // Digital IO
 	PWM = 1, // Digital PWM + Digital IO. PWM Pins can send PWM
-	ANALOG = 2, // Analog In + Digital PWM + Digital IO
+	ANALOG = 2, // Analog In + Digital IO
 	DAC = 3 // Anolog Out(DAC) + Digital IO
 }
 
@@ -130,8 +130,12 @@ public class PinInfo{
 	public int value; // represent current value of the pin
 	public bool keyUp; // is true during the frame next to the release
 	public bool keyDown; // is true during the frame where it is pressed
-	public PinInfo(PinType type){
+	public bool reporting; // is it reporting?
+	public PinInfo(PinType type, bool reporting){
 		pinType = type;
 		pinMode = PinMode.INPUT;
+		this.reporting = reporting;
+	}
+	public PinInfo (PinType type) : this (type, false){
 	}
 }

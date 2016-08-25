@@ -10,12 +10,14 @@ public class FirmataBridge : MonoBehaviour {
 	[HideInInspector] public string portType;
 	public uint portNumber = 3;
 	public Board board = ArduinoBoards.Uno;
+	[HideInInspector] public int boardNumber = 0;
 	public StandardBaudRate baudRate = StandardBaudRate.baud57600;
 	public bool autoStart = false;
 	public int autoStartDelay = 0;
-	public bool reportAll = true;
+	public bool reportAllDigitalPins = true; // Digital pins
 	public int readTimeout = 1;
 	public static FirmataBridge instance; // in future, this may be a List of instances instead, so one can have multiple connections with differents devices all at once
+	public int samplingInterval = 33; // 2^14 is the maximum samplingInterval supportable.
 	// Private Variables
 	private Dictionary<int,PinInfo> pins = new Dictionary<int,PinInfo> (); // pins infos. Digital pin are from 0 to ..., pin Analog n  corresponds to -(n+1)
 	// so Analog 0 -> Pin -1, Analog 2 -> pin -2 and such
@@ -26,20 +28,20 @@ public class FirmataBridge : MonoBehaviour {
 	//Constructors
 	void Start(){
 		string portName;
+		Debug.Log ("Board is " + board.name);
 		totalDigitalPins = board.totalDigitalIO + board.totalAnalogIn;
 		totalDigitalPorts = (totalDigitalPins - totalDigitalPins % 8) / 8 + 1;
 		for (int i = 0; i < totalDigitalPins; i++) {
 			if (board.PWMEnabled.Contains(i))
-				pins.Add (i, new PinInfo (PinType.PWM));
+				pins.Add (i, new PinInfo (PinType.PWM,reportAllDigitalPins));
 			else
-				pins.Add (i, new PinInfo (PinType.DIGITAL));
+				pins.Add (i, new PinInfo (PinType.DIGITAL,reportAllDigitalPins));
 		}
 		for (int i = 0; i < board.totalAnalogIn+board.totalAnalogOut; i++) {
 			if (i < board.totalAnalogIn)
 				pins.Add (-(i + 1), new PinInfo (PinType.ANALOG));
 			else pins.Add(-(i + 1), new PinInfo (PinType.DAC));
 		}
-		Debug.Log (pins.Count);
 		switch (portType) {
 		case PortSelection.AUTO:
 			portName = SerialPort.GetPortNames () [0];
@@ -69,7 +71,6 @@ public class FirmataBridge : MonoBehaviour {
 		if (autoStart) {
 			StartCoroutine(WaitOpen (autoStartDelay));	
 		}
-		Debug.Log (serialPort.PortName);
 	}		
 
 	private IEnumerator WaitOpen(int milliseconds){
@@ -90,19 +91,28 @@ public class FirmataBridge : MonoBehaviour {
 			}
 		}
 		if (isOpen) {
-			byte[] message = new byte[2]; // enlarge it when strings are to be supported
+			byte[] message = new byte[5]; // enlarge it when strings are to be supported
 			message [1] = 1;
-			//  if reportAll = true, enable report for all pins by default, else, pin are to be enabled when "pinMode" is used on them
-			if (instance.reportAll) {
+			//  if reportAllDigitalPins = true, enable report for all pins by default, else, pin are to be enabled when "pinMode" is used on them
+			if (instance.reportAllDigitalPins) {
 				for (int i = 0; i < totalDigitalPorts; i++) {
 					message [0] = (byte)((int)Message.REPORT_DIGITAL_PORT | i);
 					instance.serialPort.Write (message, 0, 2);
 				}
-				/*for (int i = 0; i < instance.board.totalAnalogIn+instance.board.totalAnalogOut; i++) {
-					message [0] = (byte)((int)Message.REPORT_ANALOG_PIN | i);
-					instance.serialPort.Write (message, 0, 2);
-				}*/
 			}
+			if (samplingInterval >= (int)Mathf.Pow (2, 14))
+				samplingInterval = (int)Mathf.Pow (2, 14) - 1;
+			message [0] = (byte)Message.START_SYSEX;
+			message [1] = (byte)SysexQuery.SAMPLING_INTERVAL;
+			if (samplingInterval < Mathf.Pow (2, 7)) {
+				message [2] = (byte)samplingInterval;
+				message [3] = 0;
+			} else {
+				message [2] = (byte)(samplingInterval%Mathf.Pow (2, 7));
+				message [3] = (byte)Mathf.Floor((samplingInterval-samplingInterval%Mathf.Pow (2, 7))/Mathf.Pow (2, 7));
+			}
+			message [4] = (byte)Message.SYSEX_END;
+			serialPort.Write (message, 0, 5);
 		}
 	}
 
@@ -119,19 +129,19 @@ public class FirmataBridge : MonoBehaviour {
 		if (isOpen) {
 			string protocol_Version = "";
 			int readed = instance.ReadByte ();
-			if (((readed & (int)Message.ANALOG_MESSAGE) == (int)Message.ANALOG_MESSAGE)) {
+			while (((readed & (int)Message.ANALOG_MESSAGE) == (int)Message.ANALOG_MESSAGE)) {
 				// 0xE1 & 0xE0 -> 0xE0
 				int pin = readed - (int)Message.ANALOG_MESSAGE;
 				int value = instance.ReadByte ();
 				value += instance.ReadByte () * (int)Mathf.Pow (2, 7);
-				instance.ChangePinState (pin, value);
+				instance.ChangePinState (-(pin+1), value);
+				readed = instance.ReadByte (); // continue
 			}
-			if (((readed & (int)Message.DIGITAL_MESSAGE) == (int)Message.DIGITAL_MESSAGE)) {
+			while (((readed & (int)Message.DIGITAL_MESSAGE) == (int)Message.DIGITAL_MESSAGE)) {
 				// 0x91 & 0x90 -> 0x90
 				int port = readed - (int)Message.DIGITAL_MESSAGE;
 				int max = Mathf.Min ((port + 1) * 8 - 1, totalDigitalPins);
 				readed = instance.ReadByte ();
-				Debug.Log ("for port " + port + " byte is " + readed);
 				for (int i = port * 8; i < max; i++) {
 					int value = readed & PinHelper.getPinMask (i % 8);
 					if (value != 0)
@@ -145,6 +155,7 @@ public class FirmataBridge : MonoBehaviour {
 						value = 1;
 					instance.ChangePinState (port * 8 + 8, value);
 				}
+				readed= instance.ReadByte (); // 
 			}
 			if (readed == (int)Message.START_SYSEX) {
 				// SYSEX Management on hold
@@ -184,8 +195,6 @@ public class FirmataBridge : MonoBehaviour {
 			StartCoroutine (StopKeyUp (pin));
 		}
 		pins [pin].value = value;
-		if (pin == 13)
-			Debug.Log ("value is " + pins [pin].value + " keydown: " + pins [pin].keyDown + " keyup: " + pins [pin].keyUp);
 	}
 
 	private IEnumerator StopKeyUp(int pin){
@@ -199,11 +208,30 @@ public class FirmataBridge : MonoBehaviour {
 		pins [pin].keyDown = false;
 	}
 
+	private void reportPort(int port){
+		for (int i = port; i < 8 * port; i++) {
+			pins [i].reporting = true;
+		}
+		byte[] message = new byte[2]; // enlarge it when strings are to be supported
+		message [0] = (byte)((int)Message.REPORT_DIGITAL_PORT | port);
+		message [1] = 1;
+		serialPort.Write (message, 0, 2);
+	}
+
+	private void reportAnalogPin(int analogPin){
+		pins [-(analogPin + 1)].reporting = true;
+		byte[] message = new byte[2]; // enlarge it when strings are to be supported
+		message [0] = (byte)((int)Message.REPORT_ANALOG_PIN|analogPin);
+		message [1] = 1;
+		serialPort.Write (message, 0, 2);
+	}
 	// Digital I/O Arduino functions 
 
 	public void pinMode(int pin, PinMode mode){
 		byte[] message = new byte[3];
 		pins [pin].pinMode = mode;
+		if (!pins [pin].reporting)
+			reportPort ((pin - pin % 8) / 8);
 		message [0] = (byte)Message.SET_DIGITAL_PIN_MODE;
 		message [1] = (byte)pin;
 		message [2] = (byte)mode; 
@@ -236,7 +264,13 @@ public class FirmataBridge : MonoBehaviour {
 		else return false;
 	}
 
-	//
+	// non-pwm analog function
+
+	public int analogRead(int analogPin){
+		if (pins [-(analogPin + 1)].reporting == false)
+			reportAnalogPin (analogPin);
+		return pins [-(analogPin + 1)].value;
+	}
 
 }		
 // Sysex Queries are to be implemented later
