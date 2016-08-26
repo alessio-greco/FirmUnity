@@ -28,6 +28,7 @@ public class CubeScript : MonoBehaviour {
 	// Update is called once per frame
 	void Update () {
 		if (arduinoUno.IsReady ()) {
+			int counter = 0;
 			int direction = (int)(arduinoUno.analogRead (0)*1.5*Mathf.PI);
 			float x = 50*Mathf.Cos ((float)(direction)/ 1024);
 			float z = 50*Mathf.Sin ((float)(direction)/ 1024);
@@ -35,6 +36,8 @@ public class CubeScript : MonoBehaviour {
 				Debug.Log("Jumped to: "+x+","+z+" with read"+direction);
 				myBody.AddForce (new Vector3 (x, 50, z));
 			}
+			if ((counter = arduinoUno.pulseln (13)) != 0)
+				Debug.Log ("pulse length: " + counter + " ms");
 			arduinoUno.analogWrite (5,Mathf.FloorToInt(Vector3.Distance (myTransform.position, new Vector3 (-2.336f, 1.6f, -9.998f))));
 		}
 	}

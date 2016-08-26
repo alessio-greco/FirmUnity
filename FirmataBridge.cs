@@ -26,6 +26,7 @@ public class FirmataBridge : MonoBehaviour {
 	private int totalDigitalPorts;
 	private bool isOpen;
 	private bool isReady = false;
+	private Dictionary<int, int> pulseCounter = new Dictionary<int, int>();
 	//Variables 
 	//Constructors
 	void Start(){
@@ -370,6 +371,18 @@ public class FirmataBridge : MonoBehaviour {
 
 	}
 
+	private IEnumerator CheckPulse(int pin, bool startingValue){
+		while (getKey (pin) == startingValue) {
+			yield return new WaitForEndOfFrame ();
+		}
+		int counter = 0;
+		while (getKey (pin) != startingValue){
+			counter += (int)Mathf.FloorToInt(Time.deltaTime*1000);
+			yield return new WaitForEndOfFrame ();
+		}
+		pulseCounter [pin] = counter;
+	}
+
 	// Digital I/O Arduino functions 
 
 	public void pinMode(int pin, PinMode mode){
@@ -416,6 +429,8 @@ public class FirmataBridge : MonoBehaviour {
 		return pins [pin].value;
 	}
 
+
+
 	// Additional Digital I/O functions based on Unity Input
 	public bool getKeyUp(int pin){
 		if ((pin > board.totalPins) || (pin < 0))
@@ -460,13 +475,34 @@ public class FirmataBridge : MonoBehaviour {
 				pinMode (pin, PinMode.PWM);
 			}
 		}
-		Debug.Log ("PWM value should be " + value);
 		if (value > 255)
 			value = 255;
 		if (value < 0)
 			value = 0;
 		extendedAnalog (pin, value);
 	}
+
+	// Advanced I/O
+
+	public int pulseln(int pin){ // Non blocking implementation of pulseln, 
+		//that is used to issue a counter for a pulse in a certain pin and in case the counter started, return 0 if the counter didn't stop and pulseln if the counter stopped
+		if (pulseCounter.ContainsKey (pin)) { // if there's a pulse counter for that 
+			int counter=pulseCounter[pin];
+			if (counter == 0)
+				return 0;//counter is still counting or there wasn't any pulse
+			pulseCounter.Remove(pin); // remove counter 
+			return counter; // return the pulse duration
+		} else {
+			pulseCounter.Add (pin, 0);
+			StartCoroutine(CheckPulse(pin,getKey(pin)));
+			return 0;
+		}
+
+	}
+
+	// Servo 
+
+
 }		
 // Sysex Queries are to be implemented later
 
