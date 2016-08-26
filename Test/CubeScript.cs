@@ -20,6 +20,8 @@ public class CubeScript : MonoBehaviour {
 		} while(!arduinoUno.IsReady ());
 		arduinoUno.pinMode (13, PinMode.INPUT);
 		arduinoUno.pinMode (2, PinMode.OUTPUT);
+		arduinoUno.pinMode (5, PinMode.PWM);
+		arduinoUno.servoConfig (8, 0, 1024);
 		arduinoUno.pinMode (arduinoUno.A (0), PinMode.ANALOG);
 	}
 	IEnumerator Wait(int milliseconds){
@@ -29,7 +31,10 @@ public class CubeScript : MonoBehaviour {
 	void Update () {
 		if (arduinoUno.IsReady ()) {
 			int counter = 0;
-			int direction = (int)(arduinoUno.analogRead (0)*1.5*Mathf.PI);
+			int potentiometer = arduinoUno.analogRead (0);
+			Debug.Log ("potententiometer: "+potentiometer);
+			int direction = (int)(potentiometer*1.5*Mathf.PI);
+			arduinoUno.analogWrite (8, 1024-potentiometer);
 			float x = 50*Mathf.Cos ((float)(direction)/ 1024);
 			float z = 50*Mathf.Sin ((float)(direction)/ 1024);
 			if (arduinoUno.getKeyDown (13)) {

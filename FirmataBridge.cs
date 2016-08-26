@@ -360,15 +360,23 @@ public class FirmataBridge : MonoBehaviour {
 		message[2] = (byte)pin;
 		switch (pins [pin].currentMode) {
 		case PinMode.PWM:
-			message[3] = (byte)(value%128);
-			message[4] = (byte)(Mathf.FloorToInt(value/128));
-			message[5] = (byte)Message.SYSEX_END;
-			serialPort.Write(message,0,6);
+			if (value > 255)
+				value = 255;
+			if (value < 0)
+				value = 0;
+			break;
+		case PinMode.SERVO:
+			Debug.Log ("input: "+value);
+			value = (int)(pins [pin].minServo + (float)value / (float)(pins [pin].maxServo - pins [pin].minServo) * 180);
+			Debug.Log ("result angle: "+value);
 			break;
 		default:
 			break;
 		}
-
+		message[3] = (byte)(value%128);
+		message[4] = (byte)(Mathf.FloorToInt(value/128));
+		message[5] = (byte)Message.SYSEX_END;
+		serialPort.Write(message,0,6);
 	}
 
 	private IEnumerator CheckPulse(int pin, bool startingValue){
@@ -402,7 +410,6 @@ public class FirmataBridge : MonoBehaviour {
 		message [1] = (byte)pin;
 		message [2] = (byte)mode; 
 		serialPort.Write (message, 0, 3);
-		Debug.Log (pin + " was set to mode ");
 	}
 
 	public void digitalWrite(int pin, Value state){
@@ -465,20 +472,8 @@ public class FirmataBridge : MonoBehaviour {
 	public void analogWrite(int pin, int value){
 		if ((pin < 0) || (pin > board.totalPins)) {
 			Debug.Log ("Pin doesn't exist!");
-		}
-		if (!pins [pin].isPinModeSupported (PinMode.PWM)) {
-			Debug.Log ("PWM not supported for " + pin);
 			return;
-		} else {
-			if (pins [pin].currentMode != PinMode.PWM) {
-				Debug.Log ("setting " + pin + " to PWM");
-				pinMode (pin, PinMode.PWM);
-			}
 		}
-		if (value > 255)
-			value = 255;
-		if (value < 0)
-			value = 0;
 		extendedAnalog (pin, value);
 	}
 
@@ -502,7 +497,30 @@ public class FirmataBridge : MonoBehaviour {
 
 	// Servo 
 
-
+	public void servoConfig(int pin, int min, int max){
+		if ((pin < 0) || (pin > board.totalPins)) {
+			Debug.Log ("Pin doesn't exist!");
+			return;
+		}
+		if (!pins [pin].isPinModeSupported (PinMode.SERVO)) {
+			Debug.Log ("Servo not supported for " + pin);
+			return;
+		}
+		if (pins [pin].currentMode != PinMode.SERVO)
+			pinMode (pin, PinMode.SERVO);
+		byte[] message = new byte[8];
+		message [0] = (byte)Message.START_SYSEX;
+		message [1] = (byte)SysexQuery.SERVO_CONFIG;
+		message [2] = (byte)pin;
+		message [3] = (byte)(min % 128);
+		message [4] = (byte)Mathf.FloorToInt (min / 128);
+		message [5] = (byte)(max % 128);
+		message [6] = (byte)Mathf.FloorToInt (max / 128);
+		pins [pin].minServo = min;
+		pins [pin].maxServo = max;
+		message [7] = (byte)Message.SYSEX_END;
+		serialPort.Write (message, 0, 8);
+	}
 }		
 // Sysex Queries are to be implemented later
 
