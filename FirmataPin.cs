@@ -51,7 +51,7 @@ public class PinInfo{
 	public bool reporting; // is it reporting?
 	public bool analogReporting;
 	public int analogBits, servoBits, PWMBits, i2cBits;
-	public int minServo, maxServo;
+	public int minPulse, maxPulse;
 	public PinInfo(){
 		currentMode = PinMode.INPUT;
 	}
@@ -64,8 +64,8 @@ public class PinInfo{
 		this.servoBits = servoBits;
 		this.PWMBits = PWMBits;
 		this.i2cBits = i2cBits;
-		minServo = 0;
-		maxServo = (int)Mathf.Pow (2, 7) - 1;
+		minPulse = 0;
+		maxPulse = (int)Mathf.Pow (2, 7) - 1;
 	}
 
 }

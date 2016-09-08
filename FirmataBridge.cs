@@ -35,7 +35,7 @@ public class FirmataBridge : MonoBehaviour {
 		totalDigitalPorts = (board.totalPins - board.totalPins % 8) / 8 + 1;
 		switch (portType) {
 		case PortSelection.AUTO:
-			portName = SerialPort.GetPortNames () [0];
+			portName = SerialPort.GetPortNames () [0]; // implement a better AUTO selection...
 			break;
 		case PortSelection.COM:
 			portName = "COM" + portNumber;
@@ -248,6 +248,7 @@ public class FirmataBridge : MonoBehaviour {
 					break;
 				case (int)PinMode.SERIAL:
 					supported.Add (PinMode.SERIAL);
+					Debug.Log ("is Serial Compatible bits:"+readed1);
 					break;
 				case (int)PinMode.SERVO:
 					Debug.Log ("is Servo Compatible");
@@ -366,8 +367,10 @@ public class FirmataBridge : MonoBehaviour {
 				value = 0;
 			break;
 		case PinMode.SERVO:
-			Debug.Log ("input: "+value);
-			value = (int)(pins [pin].minServo + (float)value / (float)(pins [pin].maxServo - pins [pin].minServo) * 180);
+			if (value < 0)
+				value = 0;
+			if (value > 180)
+				value = 180;
 			Debug.Log ("result angle: "+value);
 			break;
 		default:
@@ -497,7 +500,7 @@ public class FirmataBridge : MonoBehaviour {
 
 	// Servo 
 
-	public void servoConfig(int pin, int min, int max){
+	public void servoConfig(int pin, int minPulse, int maxPulse){
 		if ((pin < 0) || (pin > board.totalPins)) {
 			Debug.Log ("Pin doesn't exist!");
 			return;
@@ -506,20 +509,20 @@ public class FirmataBridge : MonoBehaviour {
 			Debug.Log ("Servo not supported for " + pin);
 			return;
 		}
-		if (pins [pin].currentMode != PinMode.SERVO)
-			pinMode (pin, PinMode.SERVO);
 		byte[] message = new byte[8];
 		message [0] = (byte)Message.START_SYSEX;
 		message [1] = (byte)SysexQuery.SERVO_CONFIG;
 		message [2] = (byte)pin;
-		message [3] = (byte)(min % 128);
-		message [4] = (byte)Mathf.FloorToInt (min / 128);
-		message [5] = (byte)(max % 128);
-		message [6] = (byte)Mathf.FloorToInt (max / 128);
-		pins [pin].minServo = min;
-		pins [pin].maxServo = max;
+		message [3] = (byte)(minPulse % 128);
+		message [4] = (byte)Mathf.FloorToInt (minPulse / 128);
+		message [5] = (byte)(maxPulse % 128);
+		message [6] = (byte)Mathf.FloorToInt (maxPulse / 128);
+		pins [pin].minPulse = minPulse;
+		pins [pin].maxPulse = maxPulse;
 		message [7] = (byte)Message.SYSEX_END;
 		serialPort.Write (message, 0, 8);
+		if (pins [pin].currentMode != PinMode.SERVO)
+			pinMode (pin, PinMode.SERVO);
 	}
 }		
 // Sysex Queries are to be implemented later
