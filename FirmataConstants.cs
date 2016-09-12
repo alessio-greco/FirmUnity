@@ -14,7 +14,7 @@ public enum Message{
 	PROTOCOL_VERSION=0xF9
 }
 
-public enum SysexQuery{
+public enum Sysex{
 	SERIAL_MESSAGE = 0x60, // communicate with serial devices, including other boards
 	ENCODER_DATA = 0x61, // reply with encoders current positions
 	ANALOG_MAPPING_QUERY = 0x69, // ask for mapping of analog to pin numbers

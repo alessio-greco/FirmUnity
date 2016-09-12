@@ -84,12 +84,12 @@ public class FirmataBridge : MonoBehaviour {
 			byte[] message = new byte[5]; // enlarge it when strings are to be supported
 			// Send capability Query
 			message [0] = (byte)Message.START_SYSEX;
-			message [1] = (byte)SysexQuery.CAPABILITY_QUERY;
+			message [1] = (byte)Sysex.CAPABILITY_QUERY;
 			message [2] = (byte)Message.SYSEX_END;
 			serialPort.Write (message, 0, 3);
 
 			// Ask for analogPins Mapping
-			message[1] = (byte)SysexQuery.ANALOG_MAPPING_QUERY;
+			message[1] = (byte)Sysex.ANALOG_MAPPING_QUERY;
 			serialPort.Write (message, 0, 3);
 
 			if (samplingInterval >= (int)Mathf.Pow (2, 14))
@@ -98,7 +98,7 @@ public class FirmataBridge : MonoBehaviour {
 			// send a request to modify the sampling rate
 
 			message [0] = (byte)Message.START_SYSEX;
-			message [1] = (byte)SysexQuery.SAMPLING_INTERVAL;
+			message [1] = (byte)Sysex.SAMPLING_INTERVAL;
 			message [2] = (byte)(samplingInterval%Mathf.Pow (2, 7)); // if sampling = 1200 -> message[2] = 0x30 (  seven lsb ) 
 			message [3] = (byte)Mathf.Floor((samplingInterval-samplingInterval%Mathf.Pow (2, 7))/Mathf.Pow (2, 7)); // message[3]= 0x09 ( seven msb 0x09 
 			message [4] = (byte)Message.SYSEX_END;
@@ -133,7 +133,7 @@ public class FirmataBridge : MonoBehaviour {
 				Debug.Log("Sysex");
 				readed = ReadByte ();
 				switch (readed) {
-				case (int)SysexQuery.CAPABILITY_RESPONSE:
+				case (int)Sysex.CAPABILITY_RESPONSE:
 					ReadCapabilities ();
 					if (reportAllDigitalPins)
 						ReportAllDigitalPorts ();
@@ -142,7 +142,7 @@ public class FirmataBridge : MonoBehaviour {
 					byte[] message = new byte[2];
 					message [1] = 1;
 					break;
-				case (int)SysexQuery.ANALOG_MAPPING_RESPONSE:
+				case (int)Sysex.ANALOG_MAPPING_RESPONSE:
 					mapAnalogs ();
 					isReady = true;
 					break;
@@ -345,7 +345,7 @@ public class FirmataBridge : MonoBehaviour {
 	private void extendedAnalog(int pin, int value){
 		byte[] message = new byte [20];
 		message[0] = (byte)Message.START_SYSEX;
-		message[1] = (byte)SysexQuery.EXTENDED_ANALOG;
+		message[1] = (byte)Sysex.EXTENDED_ANALOG;
 		message[2] = (byte)pin;
 		switch (pins [pin].currentMode) {
 		case PinMode.PWM:
@@ -499,7 +499,7 @@ public class FirmataBridge : MonoBehaviour {
 		}
 		byte[] message = new byte[8];
 		message [0] = (byte)Message.START_SYSEX;
-		message [1] = (byte)SysexQuery.SERVO_CONFIG;
+		message [1] = (byte)Sysex.SERVO_CONFIG;
 		message [2] = (byte)pin;
 		message [3] = (byte)(minPulse % 128);
 		message [4] = (byte)Mathf.FloorToInt (minPulse / 128);
