@@ -45,7 +45,7 @@ public class FirmataBridge : MonoBehaviour {
 			serialPort = new SerialPort (portName, (int)baudRate);
 			serialPort.ReadTimeout = readTimeout;
 			break;
-		// Might extend the library to support other forms of 
+		// Might extend the library to support other forms of communication
 		default:
 			serialPort = new SerialPort (portName, (int)baudRate);
 			serialPort.ReadTimeout=readTimeout;
@@ -53,7 +53,6 @@ public class FirmataBridge : MonoBehaviour {
 		}
 		if (instance == null)
 			instance = this;
-		this.enabled = false;
 		if (autoStart) {
 			StartCoroutine(WaitOpen (autoStartDelay));	
 		}
@@ -73,7 +72,15 @@ public class FirmataBridge : MonoBehaviour {
 	public void Open (){
 		if (!isOpen) {
 			try {
-				serialPort.Open ();
+				switch (portType) {
+				case PortSelection.AUTO:
+				case PortSelection.COM:
+					serialPort.Open ();
+					break;
+				default:
+					serialPort.Open ();
+					break;
+				}
 				this.enabled = true;
 				isOpen = true;
 			}catch{

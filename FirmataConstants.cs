@@ -71,7 +71,7 @@ public class PortSelection{
 	public const string COM = "Serial port, Sketch to upload is 'StandardFirmata'";
 	public const string BLE = "Bluetooth Low Energy, unimplemented, use 'StandardFirmataBLE'";
 	public const string WIFI = "WiFi, unimplemented, use 'StandardFirmataWiFi'";
-	public const string ETHERNET = "Ethernet, unimplemented<, use 'StandardFirmataEthernet'";
+	public const string ETHERNET = "Ethernet, unimplemented, use 'StandardFirmataEthernet'";
 	public const string PLUS = "Serial Port but with additional features for more powerful boards, unimplemented, use 'StandardFirmataPlus'";
 	public const string CHIPKIT = "Serial Port but using ChipKITs, unimplemented, use 'StandardFirmataChipKIT'";
 }
