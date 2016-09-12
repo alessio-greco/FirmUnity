@@ -9,8 +9,6 @@ public class FirmataBridge : MonoBehaviour {
 	// Public Variables for initialisation
 	[HideInInspector] public string portType;
 	public uint portNumber = 3;
-	public Board board = ArduinoBoards.Uno;
-	[HideInInspector] public int boardNumber = 0;
 	public StandardBaudRate baudRate = StandardBaudRate.baud57600;
 	public bool autoStart = false;
 	public int autoStartDelay = 0;
@@ -23,7 +21,6 @@ public class FirmataBridge : MonoBehaviour {
 	// so Analog 0 -> Pin -1, Analog 2 -> pin -2 and such
 	private Dictionary<int,int> analogPins = new Dictionary<int, int>();
 	private SerialPort serialPort;
-	private int totalDigitalPorts;
 	private bool isOpen;
 	private bool isReady = false;
 	private Dictionary<int, int> pulseCounter = new Dictionary<int, int>();
@@ -31,8 +28,6 @@ public class FirmataBridge : MonoBehaviour {
 	//Constructors
 	void Start(){
 		string portName;
-		Debug.Log ("Board is " + board.name);
-		totalDigitalPorts = (board.totalPins - board.totalPins % 8) / 8 + 1;
 		switch (portType) {
 		case PortSelection.AUTO:
 			portName = SerialPort.GetPortNames () [0]; // implement a better AUTO selection...
@@ -97,15 +92,6 @@ public class FirmataBridge : MonoBehaviour {
 			message[1] = (byte)SysexQuery.ANALOG_MAPPING_QUERY;
 			serialPort.Write (message, 0, 3);
 
-			//  if reportAllDigitalPins = true, enable report for all pins by default, else, pin are to be enabled when "pinMode" is used on them
-			// no automatic reporting for analog Pins as they need frequent readings
-			message [1] = 1;
-			if (reportAllDigitalPins) {
-				for (int i = 0; i < totalDigitalPorts; i++) {
-					message [0] = (byte)((int)Message.REPORT_DIGITAL_PORT | i);
-					serialPort.Write (message, 0, 2);
-				}
-			}
 			if (samplingInterval >= (int)Mathf.Pow (2, 14))
 				samplingInterval = (int)Mathf.Pow (2, 14) - 1;
 
@@ -117,8 +103,6 @@ public class FirmataBridge : MonoBehaviour {
 			message [3] = (byte)Mathf.Floor((samplingInterval-samplingInterval%Mathf.Pow (2, 7))/Mathf.Pow (2, 7)); // message[3]= 0x09 ( seven msb 0x09 
 			message [4] = (byte)Message.SYSEX_END;
 			serialPort.Write (message, 0, 5);
-
-
 
 		}
 	}
@@ -153,6 +137,10 @@ public class FirmataBridge : MonoBehaviour {
 					ReadCapabilities ();
 					if (reportAllDigitalPins)
 						ReportAllDigitalPorts ();
+					//  if reportAllDigitalPins = true, enable report for all pins by default, else, pin are to be enabled when "pinMode" is used on them
+					// no automatic reporting for analog Pins as they need frequent readings
+					byte[] message = new byte[2];
+					message [1] = 1;
 					break;
 				case (int)SysexQuery.ANALOG_MAPPING_RESPONSE:
 					mapAnalogs ();
@@ -182,14 +170,14 @@ public class FirmataBridge : MonoBehaviour {
 			while ((readed < 0xA0 ) && (readed > 0x8F )) {
 				// 0x91 & 0x90 -> 0x90
 				int port = readed - (int)Message.DIGITAL_MESSAGE;
-				int max = Mathf.Min ((port + 1) * 8 - 1, board.totalPins);
+				int max = Mathf.Min ((port + 1) * 8 - 1, pins.Count);
 				readed = ReadByte ();
 				for (int i = port * 8; i < max; i++) {
 					int value = readed & PinHelper.getPinMask (i % 8);
 					if(pins[i].currentMode!=PinMode.ANALOG) ChangePinState (i, value);
 				}
 				readed = ReadByte ();
-				if ((port + 1) * 8 < board.totalPins) {
+				if ((port + 1) * 8 < pins.Count) {
 					int value = readed & PinHelper.getPinMask (7);
 					if (value != 0)
 						value = 1;
@@ -275,8 +263,8 @@ public class FirmataBridge : MonoBehaviour {
 			}
 		}
 		Debug.Log ("Capabilities response End");
-		if (i != board.totalPins) {
-			Debug.Log (board.name + " has " + i + " pins!");
+		if (i != pins.Count) {
+			Debug.Log ("Board has " + i + " pins!");
 		}
 	}
 
@@ -331,7 +319,7 @@ public class FirmataBridge : MonoBehaviour {
 	}
 
 	private void ReportAllDigitalPorts(){
-		for (int i = 0; i < (board.totalPins) / 8 + 1; i++)
+		for (int i = 0; i < (pins.Count) / 8 + 1; i++)
 			reportPort (i);
 	}
 
@@ -397,7 +385,7 @@ public class FirmataBridge : MonoBehaviour {
 	// Digital I/O Arduino functions 
 
 	public void pinMode(int pin, PinMode mode){
-		if ((pin > board.totalPins) || (pin < 0)) {
+		if ((pin > pins.Count) || (pin < 0)) {
 			Debug.Log ("Pin doesn't exist!");
 			return;
 		}
@@ -416,7 +404,7 @@ public class FirmataBridge : MonoBehaviour {
 	}
 
 	public void digitalWrite(int pin, Value state){
-		if ((pin > board.totalPins) || (pin < 0) ) {
+		if ((pin > pins.Count) || (pin < 0) ) {
 			Debug.Log ("Pin doesn't exist!");
 			return;
 		}
@@ -432,7 +420,7 @@ public class FirmataBridge : MonoBehaviour {
 		serialPort.Write (message, 0, 3);
 	}
 	public int digitalRead(int pin){
-		if ((pin > board.totalPins) || (pin < 0)){
+		if ((pin > pins.Count) || (pin < 0)){
 			Debug.Log ("Pin doesn't exist!");
 			return 0;
 		}
@@ -443,17 +431,17 @@ public class FirmataBridge : MonoBehaviour {
 
 	// Additional Digital I/O functions based on Unity Input
 	public bool getKeyUp(int pin){
-		if ((pin > board.totalPins) || (pin < 0))
+		if ((pin > pins.Count) || (pin < 0))
 			return false;
 		return pins [pin].keyUp;
 	}
 	public bool getKeyDown(int pin){
-		if ((pin > board.totalPins) || (pin < 0))
+		if ((pin > pins.Count) || (pin < 0))
 			return false;
 		return pins [pin].keyDown;
 	}
 	public bool getKey(int pin){
-		if ((pin > board.totalPins) || (pin < 0))
+		if ((pin > pins.Count) || (pin < 0))
 			return false;
 		if (pins [pin].value !=0)
 			return true;
@@ -473,7 +461,7 @@ public class FirmataBridge : MonoBehaviour {
 	// analog pwm function
 
 	public void analogWrite(int pin, int value){
-		if ((pin < 0) || (pin > board.totalPins)) {
+		if ((pin < 0) || (pin > pins.Count)) {
 			Debug.Log ("Pin doesn't exist!");
 			return;
 		}
@@ -501,7 +489,7 @@ public class FirmataBridge : MonoBehaviour {
 	// Servo 
 
 	public void servoConfig(int pin, int minPulse, int maxPulse){
-		if ((pin < 0) || (pin > board.totalPins)) {
+		if ((pin < 0) || (pin > pins.Count)) {
 			Debug.Log ("Pin doesn't exist!");
 			return;
 		}
