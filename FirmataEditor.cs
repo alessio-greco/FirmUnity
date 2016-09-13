@@ -5,14 +5,9 @@ using UnityEngine;
 [CustomEditor(typeof(FirmataBridge))]
 public class FirmataEditor : Editor{
 	string[] portChoices = new string[] { PortSelection.AUTO, PortSelection.COM, PortSelection.PLUS, PortSelection.CHIPKIT, PortSelection.ETHERNET, PortSelection.BLE, PortSelection.WIFI};
-	int portIndex=0;
+	int portIndex = 1;
 
 	void OnEnable (){
-		var firmataBridge = target as FirmataBridge;
-		for(int i=0;i<portChoices.Length;i++){
-			if (portChoices [i] == firmataBridge.portType)
-				portIndex = i;
-		}
 	}
 
 	public override void OnInspectorGUI (){

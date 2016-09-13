@@ -67,7 +67,7 @@ public enum StandardBaudRate{
 }
 
 public class PortSelection{
-	public const string AUTO = "Automatic Selection of Serial Port, Select first serial port that use Firmata";
+	public const string AUTO = "Automatic Selection of Serial Port, Select the first Serial port";
 	public const string COM = "Serial port, Sketch to upload is 'StandardFirmata'";
 	public const string BLE = "Bluetooth Low Energy, unimplemented, use 'StandardFirmataBLE'";
 	public const string WIFI = "WiFi, unimplemented, use 'StandardFirmataWiFi'";
