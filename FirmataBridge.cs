@@ -27,10 +27,9 @@ public class FirmataBridge : MonoBehaviour {
 	//Variables 
 	//Constructors
 	void Start(){
-		string portName;
+		string portName="COM";
 		switch (portType) {
 		case PortSelection.AUTO:
-			portName = SerialPort.GetPortNames () [0]; // implement a better AUTO selection...
 			break;
 		case PortSelection.COM:
 			portName = "COM" + portNumber;
@@ -41,6 +40,7 @@ public class FirmataBridge : MonoBehaviour {
 		}
 		switch (portType) {
 		case PortSelection.AUTO:
+			break;
 		case PortSelection.COM:
 			serialPort = new SerialPort (portName, (int)baudRate);
 			serialPort.ReadTimeout = readTimeout;
@@ -74,15 +74,19 @@ public class FirmataBridge : MonoBehaviour {
 			try {
 				switch (portType) {
 				case PortSelection.AUTO:
+					StartCoroutine(AutomaticPortSelection());
+					break;
 				case PortSelection.COM:
 					serialPort.Open ();
+					this.enabled = true;
+					isOpen = true;
 					break;
 				default:
 					serialPort.Open ();
+					this.enabled = true;
+					isOpen = true;
 					break;
 				}
-				this.enabled = true;
-				isOpen = true;
 			}catch{
 				Debug.Log ("errors while opening the serial port!");
 			}
@@ -111,6 +115,43 @@ public class FirmataBridge : MonoBehaviour {
 			message [4] = (byte)Message.SYSEX_END;
 			serialPort.Write (message, 0, 5);
 
+		}
+	}
+
+	private IEnumerator AutomaticPortSelection(){
+		string[] names = SerialPort.GetPortNames();
+		Dictionary<string,SerialPort> ports = new Dictionary<string, SerialPort> ();
+		foreach (string name in names){
+			ports.Add (name, new SerialPort (name,(int)baudRate));
+			try{
+				ports[name].ReadTimeout=readTimeout;
+				ports[name].Open();
+				Debug.Log("There's something on port "+name); 
+			}
+			catch{
+				ports.Remove (name);
+			}
+		}
+		byte[] message = new byte[1]; 
+		message [0] = (byte)Message.PROTOCOL_VERSION;
+		foreach (KeyValuePair<string,SerialPort> port in ports) {
+			int readed = 0;
+			yield return new WaitUntil(() => port.Value.IsOpen==true);
+			Debug.Log (port.Key + " is open"); 
+			port.Value.Write (message, 0, 1); // send a protocol version message
+			yield return new WaitForSeconds (1);
+			try{
+				readed = port.Value.ReadByte();
+				Debug.Log (port.Key + " says " + readed); 
+				if (readed!=0) { // just ask for a response  
+					serialPort = port.Value;
+					isOpen = true;
+					this.enabled=true;
+					Open ();
+					break;
+				}
+			}catch{
+			}
 		}
 	}
 
@@ -331,6 +372,7 @@ public class FirmataBridge : MonoBehaviour {
 	}
 
 	private void reportPort(int port){
+		Debug.Log ("Enabling digital Pins "+(8*port)+" to "+(8*port+7));
 		for (int i = port; i < 8 * port; i++) {
 			pins [i].reporting = true;
 		}
