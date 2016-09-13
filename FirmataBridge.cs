@@ -402,8 +402,10 @@ public class FirmataBridge : MonoBehaviour {
 		}
 		byte[] message = new byte[3];
 		pins [pin].currentMode = mode;
-		if (!pins [pin].reporting)
-			reportPort ((pin - pin % 8) / 8);
+		if ((mode == PinMode.INPUT) || (mode == PinMode.INPUT_PULLUP)) { 
+			if (!pins [pin].reporting)
+				reportPort ((pin - pin % 8) / 8);
+		}
 		message [0] = (byte)Message.SET_DIGITAL_PIN_MODE;
 		message [1] = (byte)pin;
 		message [2] = (byte)mode; 
