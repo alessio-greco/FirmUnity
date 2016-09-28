@@ -181,6 +181,8 @@ public class FirmataBridge : MonoBehaviour {
 				readed = ReadByte ();
 				for (int i = port * 8; i < max; i++) {
 					int value = readed & PinHelper.getPinMask (i % 8);
+					if (value != 0)
+						value = 1;
 					if(pins[i].currentMode!=PinMode.ANALOG) ChangePinState (i, value);
 				}
 				readed = ReadByte ();
