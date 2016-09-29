@@ -26,7 +26,7 @@ public class FirmataBridge : MonoBehaviour {
 	private Dictionary<int, int> pulseCounter = new Dictionary<int, int>();
 	//Variables 
 	//Constructors
-	void Start(){
+	void Awake(){
 		string portName;
 		switch (portType) {
 		case PortSelection.AUTO:
