@@ -1,4 +1,5 @@
-﻿// Editor modifications
+﻿#if UNITY_EDITOR
+// Editor modifications
 using UnityEditor;
 using UnityEngine;
 
@@ -20,3 +21,4 @@ public class FirmataEditor : Editor{
 		EditorUtility.SetDirty (target);
 	}		
 }
+#endif
