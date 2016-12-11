@@ -9,15 +9,15 @@ You need to upload one the StandardFirmata sketches, or implement a custom sketc
 Firmata/Arduino has these sketches.
 * StandardFirmata 	
   * Uses the Serial Port to comunicate.  
-*StandardFirmataBLE
+* StandardFirmataBLE
   * Uses the BLE to comunicate.   	
-*StandardFirmataChipKIT 
+* StandardFirmataChipKIT 
   * Uses the Serial Port to comunicate, for use with ChipKIT expansion kits.  
-*StandardFirmataEthernet 	
+* StandardFirmataEthernet 	
   * Uses the Ethernet to comunicate.  
-*StandardFirmataPlus 
+* StandardFirmataPlus 
   * Uses the Serial Port to comunicate, has more 
-*StandardFirmataWiFi
+* StandardFirmataWiFi
   * Uses the WiFi to comunicate.
 As of now, the library ony works with the Serial Port.
 
